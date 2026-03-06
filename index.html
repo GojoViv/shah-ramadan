@@ -126,6 +126,24 @@ body.kids .command-centre{display:block;}
 .family-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
 @media(max-width:900px){.family-grid{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:600px){.family-grid{grid-template-columns:1fr;}}
+/* Single member card (when only 1 shown) */
+.member-card-single{max-width:480px;margin:0 auto;width:100%;}
+
+/* Member selector pills */
+.member-selector{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
+.member-pill{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:50px;border:1.5px solid rgba(255,255,255,0.1);background:var(--s2);cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);transition:all 0.2s;font-family:inherit;}
+.member-pill:hover{border-color:rgba(255,255,255,0.25);color:var(--text);}
+body.kids .member-pill{border-radius:50px;font-family:'Baloo 2',cursive;}
+
+/* Prayer strip */
+.prayer-strip{display:flex;justify-content:space-around;background:var(--s1);padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex-wrap:wrap;gap:8px;}
+.prayer-item{text-align:center;min-width:58px;}
+.prayer-item .pname{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;}
+.prayer-item .ptime{font-size:13px;font-weight:700;color:var(--text);}
+.prayer-item.past .ptime{color:var(--dim);text-decoration:line-through;}
+.prayer-item.next-prayer .pname{color:var(--gold);}
+.prayer-item.next-prayer .ptime{color:var(--gold);}
+.pnext-badge{font-size:8px;color:var(--gold);letter-spacing:1px;margin-top:2px;font-weight:700;}
 
 .member-card{
   background:var(--s1);border:1px solid rgba(255,255,255,0.07);
@@ -136,12 +154,7 @@ body.kids .command-centre{display:block;}
 body.kids .member-card{border-radius:16px;border-width:2px;border-color:rgba(255,255,255,0.1);}
 
 /* Card color accents */
-.member-card[data-member="Shaf"]{border-top:3px solid var(--gold);}
-.member-card[data-member="Fuzzy"]{border-top:3px solid #FF6B9D;}
-.member-card[data-member="Haddy"]{border-top:3px solid var(--teal);}
-.member-card[data-member="Shaz"]{border-top:3px solid #9B59B6;}
-.member-card[data-member="S"]{border-top:3px solid #3498DB;}
-.member-card[data-member="Iff & Ish"]{border-top:3px solid #6BCB77;}
+/* member border-top applied inline via selectedMember color */
 
 .member-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .member-info{display:flex;align-items:center;gap:10px;}
@@ -570,9 +583,19 @@ body.kids .toast{font-size:15px;border-radius:50px;}
     <div class="quest-cards" id="quest-cards"></div>
   </div>
 
+  <!-- PRAYER TIMES STRIP -->
+  <div class="prayer-strip" id="prayer-strip">
+    <div class="prayer-item"><div class="pname">🌅 Fajr</div><div class="ptime">--:--</div></div>
+    <div class="prayer-item"><div class="pname">☀️ Dhuhr</div><div class="ptime">--:--</div></div>
+    <div class="prayer-item"><div class="pname">🌤 Asr</div><div class="ptime">--:--</div></div>
+    <div class="prayer-item"><div class="pname">🌇 Maghrib</div><div class="ptime">--:--</div></div>
+    <div class="prayer-item"><div class="pname">🌙 Isha</div><div class="ptime">--:--</div></div>
+  </div>
+
   <!-- FAMILY TRACKER -->
   <div>
-    <div class="sec-title">Family Prayer & Fasting Tracker</div>
+    <div class="sec-title">Prayer & Fasting Tracker</div>
+    <div class="member-selector" id="member-selector"></div>
     <div class="family-grid" id="family-grid"></div>
   </div>
 
@@ -604,7 +627,7 @@ body.kids .toast{font-size:15px;border-radius:50px;}
       <div class="panel">
         <div class="deeds-list" id="deeds-list"></div>
         <div class="deed-input-row">
-          <select class="deed-input" id="deed-who" style="max-width:90px;">
+          <select class="deed-input" id="deed-who" style="max-width:90px;" onchange="selectedMember=this.value;renderMemberSelector();renderFamily();">
             <option>Shaf</option><option>Fuzzy</option><option>Haddy</option>
             <option>Shaz</option><option>S</option><option>Iff & Ish</option>
           </select>
@@ -720,8 +743,8 @@ const FAMILY = [
 const PRAYERS = ['Fajr','Dhuhr','Asr','Maghrib','Isha','Taraweeh'];
 const PRAYER_EMOJI = {'Fajr':'🌅','Dhuhr':'☀️','Asr':'🌤','Maghrib':'🌅','Isha':'🌙','Taraweeh':'🕌'};
 
-const RAMADAN_START = new Date('2026-02-28');
-const EID_DATE = new Date('2026-03-30');
+const RAMADAN_START = new Date('2026-03-01'); // India/Chennai moon sighting
+const EID_DATE = new Date('2026-03-31');     // India Eid al-Fitr
 
 const HADITHS = [
   { text:'"When Ramadan enters, the gates of Paradise are opened, the gates of Hellfire are closed, and the devils are chained."', source:'Sahih al-Bukhari 1899' },
@@ -769,6 +792,59 @@ const QUESTS = [
   { icon:'📖', name:'Quran Quest', desc:'Ask everyone: How many pages did they read?' },
   { icon:'💛', name:'Good Deed Hunt', desc:'Find one good deed from each family member.' },
 ];
+
+// ===== MEMBER SELECTOR STATE =====
+let selectedMember = FAMILY[0].name;
+
+function selectMember(name) {
+  selectedMember = name;
+  // sync deed-who dropdown
+  const deedWho = document.getElementById('deed-who');
+  if (deedWho) deedWho.value = name;
+  renderMemberSelector();
+  renderFamily();
+}
+
+function renderMemberSelector() {
+  const el = document.getElementById('member-selector');
+  if (!el) return;
+  el.innerHTML = FAMILY.map(m => `
+    <button class="member-pill ${selectedMember === m.name ? 'active' : ''}"
+      style="${selectedMember === m.name ? `border-color:${m.color};color:${m.color};background:${m.color}18;` : ''}"
+      onclick="selectMember('${m.name}')">
+      <span>${m.avatar}</span>
+      <span>${m.name}</span>
+    </button>
+  `).join('');
+}
+
+// ===== PRAYER STRIP =====
+function renderPrayerStrip() {
+  const strip = document.getElementById('prayer-strip');
+  if (!strip) return;
+  const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+  const now = new Date();
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  const entries = [
+    { name:'Fajr', time: prayerTimes.Fajr, emoji:'🌅' },
+    { name:'Dhuhr', time: prayerTimes.Dhuhr, emoji:'☀️' },
+    { name:'Asr', time: prayerTimes.Asr, emoji:'🌤' },
+    { name:'Maghrib', time: prayerTimes.Maghrib, emoji:'🌇' },
+    { name:'Isha', time: prayerTimes.Isha, emoji:'🌙' },
+  ];
+  // Find next prayer
+  let nextIdx = entries.findIndex(e => toMin(e.time) > nowMin);
+  if (nextIdx === -1) nextIdx = 0; // wrap to Fajr next day
+  strip.innerHTML = entries.map((e, i) => {
+    const isPast = toMin(e.time) < nowMin;
+    const isNext = i === nextIdx;
+    return `<div class="prayer-item ${isPast ? 'past' : ''} ${isNext ? 'next-prayer' : ''}">
+      <div class="pname">${e.emoji} ${e.name}</div>
+      <div class="ptime">${e.time}</div>
+      ${isNext ? '<div class="pnext-badge">NEXT</div>' : ''}
+    </div>`;
+  }).join('');
+}
 
 // ===== STATE =====
 const todayKey = () => new Date().toISOString().slice(0,10);
@@ -838,20 +914,22 @@ function updateEidCountdown() {
   document.getElementById('eid-countdown').textContent = diff > 0 ? diff + ' days' : '🎉 Eid!';
 }
 
-// Prayer times (London defaults, updated via API)
-let prayerTimes = { Fajr:'05:10', Sunrise:'06:45', Dhuhr:'12:25', Asr:'15:40', Maghrib:'18:22', Isha:'19:50' };
+// Prayer times (Chennai defaults, updated via API)
+let prayerTimes = { Fajr:'05:18', Sunrise:'06:26', Dhuhr:'12:22', Asr:'15:47', Maghrib:'18:21', Isha:'19:30' };
 let timesLoaded = false;
 
 async function fetchPrayerTimes() {
   try {
     const d = new Date();
     const dateStr = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
-    const res = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=London&country=GB&method=2&date=${dateStr}`);
+    // Chennai, India — method 1 (University of Islamic Sciences, Karachi — standard for South Asia)
+    const res = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=Chennai&country=IN&method=1&date=${dateStr}`);
     if (!res.ok) throw new Error();
     const json = await res.json();
     const t = json.data.timings;
     prayerTimes = { Fajr:t.Fajr, Sunrise:t.Sunrise, Dhuhr:t.Dhuhr, Asr:t.Asr, Maghrib:t.Maghrib, Isha:t.Isha };
     timesLoaded = true;
+    renderPrayerStrip();
   } catch(e) {}
 }
 
@@ -882,12 +960,14 @@ function renderFamily() {
   const { data, key } = getTodayData();
   const todayD = data[key];
   const grid = document.getElementById('family-grid');
-  grid.innerHTML = FAMILY.map(m => {
+  // Only show the currently selected member
+  const SHOW = FAMILY.filter(m => m.name === selectedMember);
+  grid.innerHTML = SHOW.map(m => {
     const md = todayD[m.name];
     const pts = getPoints(md);
     const prayersDone = PRAYERS.filter(p => md.prayers[p]).length;
     return `
-    <div class="member-card" data-member="${m.name}">
+    <div class="member-card member-card-single" data-member="${m.name}" style="border-top:3px solid ${m.color};">`
       <div class="member-header">
         <div class="member-info">
           <div class="member-avatar" style="background:${m.color}22;">${m.avatar}</div>
@@ -1392,7 +1472,9 @@ function setHadith() {
 async function init() {
   applyMode();
   setHadith();
+  renderMemberSelector();
   renderFamily();
+  renderPrayerStrip();
   renderDeeds();
   renderBadges();
   renderBingo();
